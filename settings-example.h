@@ -19,24 +19,8 @@
 #define BME680_HEATING_TIME 150 // milliseconds
 #define BME680_SEND_DELAY 10000 // milliseconds
 
-#define BH1750_SEND_DELAY 1000  // milliseconds
-
-#define MLX90614_SEND_DELAY 1000  // milliseconds
-
-#define APDS9960_SEND_DELAY 1000  // milliseconds
-
-#define SI7021_SEND_DELAY 1000  // milliseconds
-
 #define BME280_SEND_DELAY 1000 // milliseconds
 
 #define SDS011_SEND_DELAY 500 // milliseconds
 #define SDS011_RXPIN D3
 #define SDS011_TXPIN D4
-
-//#define MHZ19_USE  // Comment out if MHZ19 is not connected
-#define MHZ19_SEND_DELAY 5000 // milliseconds
-#define MHZ19_RXPIN D5
-#define MHZ19_TXPIN D6
-
-#define DS18B20_SEND_DELAY 2000 // milliseconds
-#define ONE_WIRE_BUS D3         // data pin (a 4.7-10K pull-up resistor is necessary, wemos mini has it built-in on D3, D4)

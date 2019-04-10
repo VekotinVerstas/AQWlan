@@ -1,23 +1,10 @@
 /**************************************************************************************
-   Sketch to read any supported sensor and send the data via MQTT to the broker.
+   This sketch reads SDS011 dust sensor and bme280/680  for humidity and temperature.
+
+   The mesurement data is sent to an MQTT broker to be saved into a database
+   or shown in some visualizations.
    Copyright 2018-2019 Aapo Rista / Vekotinverstas / Forum Virium Helsinki Oy
    MIT license
-
-   The idea is to read all supported I2C and other sensors and send the data frequently
-   to the server.
-   This sketch supports (or will support) sensors listed below:
-   - BME280 temp, humidity, pressure sensor
-   - BME680 temp, humidity, pressure, VOC sensor
-   - BH1750 LUX meter
-   - APDS-9960 gesture / rgb light sensor
-   - MLX90614 IR thermometer
-   - Si7021 temperature / humidity sensor
-   - SDS011 PM2.5/PM10 (Particle matter) sensor
-   - MHZ19 CO2 sensor 
-   TODO:
-   - a button or any device which creates interrupts
-   - APDS-9960 gestures
-   - Dallas DS18B20
 
   NOTE
   You must install libraries below using Arduino IDE's 
@@ -29,11 +16,7 @@
    Adafruit Unified Sensor (version >= 1.0.2 by Adafruit)
    Adafruit BME280 Library
    Adafruit BME680 Library
-   SparkFun APDS9960 RGB and Gesture Sensor
-   SparkFun Si7021 Humidity and Temperature Sensor
    Nova Fitness Sds dust sensors library
-   OneWire by Jim Studt, Tom Pollard etc.
-   DallasTemperature by Miles Burton etc.
    
  **************************************************************************************/
 
@@ -50,14 +33,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Adafruit_BME680.h>
-#include <SparkFun_APDS9960.h>
-#include <Adafruit_MLX90614.h>
-#include <SparkFun_Si7021_Breakout_Library.h>  // https://github.com/sparkfun/Si7021_Breakout
 #include <SdsDustSensor.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-#include "src/BH1750.h"           // https://github.com/claws/BH1750
-#include "src/mhz19.h"
 
 // I2C settings
 #define SDA     D2
@@ -98,42 +74,6 @@ float bme680_lastHumi = -999;
 float bme680_lastPres = -999;
 float bme680_lastGas = -999;
 
-// BH1750 LUX sensor
-BH1750 bh1750(0x23);
-uint8_t bh1750_ok = 0;
-uint32_t bh1750_lastRead = 0;
-uint32_t bh1750_lastSend = 0;
-uint16_t bh1750_lux = -1;
-uint16_t bh1750_lastLux = -1;
-
-// MLX90614 IR thermometer
-Adafruit_MLX90614 mlx = Adafruit_MLX90614();
-uint8_t mlx90614_ok = 0;
-uint32_t mlx90614_lastRead = 0;
-uint32_t mlx90614_lastSend = 0;
-float mlx90614_ambient_temp = -273.15;
-float mlx90614_object_temp = -273.15;
-float mlx90614_ambient_lastTemp = -273.15;
-float mlx90614_object_lastTemp = -273.15;
-
-// APDS9960 RGB and gesture sensor
-SparkFun_APDS9960 apds9960 = SparkFun_APDS9960();
-uint8_t apds9960_ok = 0;
-uint32_t apds9960_lastRead = 0;
-uint32_t apds9960_lastSend = 0;
-uint32_t apds9960_lastR = -999;
-uint32_t apds9960_lastG = -999;
-uint32_t apds9960_lastB = -999;
-uint32_t apds9960_lastA = -999;
-
-// Si7021 temperature and humidity sensor
-Weather si7021;
-uint8_t si7021_ok = 0;
-uint32_t si7021_lastRead = 0;
-uint32_t si7021_lastSend = 0;
-float si7021_lastTemp = -999;
-float si7021_lastHumi = -999;
-
 // BME280 sensor
 Adafruit_BME280 bme280;
 uint8_t bme280_ok = 0;
@@ -152,26 +92,6 @@ uint32_t sds011_lastRead = 0;
 uint32_t sds011_lastSend = 0;
 float sds011_lastPM25 = -1.0;
 float sds011_lastPM10 = -1.0;
-
-#ifdef MHZ19_USE
-SoftwareSerial mhz19(MHZ19_RXPIN, MHZ19_TXPIN);
-#endif
-uint8_t mhz19_ok = 0;
-uint32_t mhz19_lastRead = 0;
-uint32_t mhz19_lastSend = 0;
-int mhz19_lastCO2 = -1.0;
-int mhz19_lastTemp = -100.0;
-
-// Dallas DS28B20 OneWire temperature sensor
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature ds18b20(&oneWire);
-uint8_t ds18b20_count = 0;
-uint8_t ds18b20_ok = 0;
-uint32_t ds18b20_lastRead = 0;
-// Only 10 sensors supported
-uint32_t ds18b20_lastSend[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-float ds18b20_last[] = {-999.0, -999.0, -999.0, -999.0, -999.0, -999.0, -999.0, -999.0, -999.0, -999.0};
-DeviceAddress tempDs18b20Address; // We'll use this variable to store a found device address
 
 float round_float(float val, int dec) {
   // Return val rounded to dec decimals
@@ -231,7 +151,7 @@ void setup() {
   lastMqttMsgTime = millis();
   init_sensors();
   char ap_name[30];
-  sprintf(ap_name, "SensorDemo_%d", ESP.getChipId());
+  sprintf(ap_name, "Quasimodo_%d", ESP.getChipId());
   Serial.print("AP name would be: ");
   Serial.println(ap_name);
   wifiManager.setConfigPortalTimeout(180);
@@ -264,15 +184,7 @@ void init_sensors() {
   // init_pushButton();
   init_bme280();
   init_bme680();
-  init_bh1750();
-  init_mlx90614();
-  init_apds9960();
-  init_si7021();
   init_sds011();
-#ifdef MHZ19_USE
-  init_mhz19();
-#endif
-  init_ds18b20();
 }
 
 void read_sensors() {
@@ -280,15 +192,7 @@ void read_sensors() {
   read_status();
   read_bme280();
   read_bme680();  
-  read_bh1750();  
-  read_mlx90614();
-  read_apds9960();
-  read_si7021();
   read_sds011();
-#ifdef MHZ19_USE
-  read_mhz19();
-#endif
-  read_ds18b20();
 }
 
 void read_status() {
@@ -309,7 +213,6 @@ void read_status() {
     );
   }
 }
-
 
 void init_pushButton() {
   Serial.println(F("INIT Pushbutton "));
@@ -350,7 +253,6 @@ void read_pushButton() {
     pushButton2_lastState = buttonState2;
   }
 }
-
 
 void init_bme280() {
   Serial.print(F("INIT BME280: "));
@@ -447,170 +349,6 @@ void read_bme680() {
   }
 }
 
-void init_bh1750() {
-  Serial.print(F("INIT BH1750: "));
-  bh1750.begin(BH1750_CONTINUOUS_HIGH_RES_MODE);
-  uint16_t lux = bh1750.readLightLevel();
-  if (lux >= 0 && lux < 54612) {
-    bh1750_ok = 1;
-    Serial.print(F("found, "));
-    Serial.print(lux);
-    Serial.println(F(" lx"));
-  } else {
-    Serial.println(F("not found"));
-  }
-}
-
-void read_bh1750() {
-  // Read BH1750 if it has been initialised successfully and it is time to read it
-  if ((bh1750_ok == 1) && (millis() > (bh1750_lastRead + BH1750_SEND_DELAY))) {
-    bh1750_lastRead = millis();
-    uint16_t lux = bh1750.readLightLevel();
-    if (
-        ((bh1750_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
-        (log10_diff(bh1750_lastLux, lux) > 0.05)
-    ) {  
-      SendDataToMQTT("bh1750", 
-        "lux", lux,
-        "", 0,
-        "", 0,
-        "", 0,
-        -1
-      );
-      bh1750_lastLux = lux;
-      bh1750_lastSend = millis();
-    }
-  }
-}
-
-void init_mlx90614() {
-  Serial.print(F("INIT MLX90614: "));
-  Serial.println(mlx.begin());
-  mlx90614_object_temp = mlx.readObjectTempC();
-  if (mlx90614_object_temp >= -270 && mlx90614_object_temp < 1000) {
-    mlx90614_ok = 1;
-    Serial.print(F("found, "));
-    Serial.print(mlx90614_object_temp);
-    Serial.println(F(" 'C"));
-  } else {
-    Serial.println(F("not found"));
-  }
-}
-
-void read_mlx90614() {
-  // Read MLX90614 if it has been initialised successfully and it is time to read it
-  if ((mlx90614_ok == 1) && (millis() > (mlx90614_lastRead + MLX90614_SEND_DELAY))) {
-    mlx90614_object_temp = mlx.readObjectTempC();
-    mlx90614_ambient_temp = mlx.readAmbientTempC();
-    if (mlx90614_object_temp > 1000) {
-      Serial.println("Failed to read MLX90614 object temp");
-      return;
-    }
-    mlx90614_lastRead = millis();
-    if (
-        ((mlx90614_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
-        (abs_diff(mlx90614_object_lastTemp, mlx90614_object_temp) > 0.2) ||
-        (abs_diff(mlx90614_ambient_lastTemp, mlx90614_ambient_temp) > 0.2) 
-    ) {    
-      SendDataToMQTT("mlx90614", 
-        "obtemp", round_float(mlx90614_object_temp, 2),
-        "amtemp", round_float(mlx90614_ambient_temp, 2),
-        "", 0,
-        "", 0,
-        -1
-      );
-      mlx90614_lastSend = millis();
-      mlx90614_object_lastTemp = mlx90614_object_temp;
-      mlx90614_ambient_lastTemp = mlx90614_ambient_temp;
-    }
-  }
-}
-
-/*
- * NOTE: Arduino/libraries/SparkFun_APDS9960_RGB_and_Gesture_Sensor/src/SparkFun_APDS9960.h
- * conflicts with ESP8266WiFi and you must change NA_STATE --> N_A_STATE in SparkFun_APDS9960.h
- */
-void init_apds9960() {
-  Serial.print(F("INIT APDS9960: "));
-  bool init_ok = apds9960.init(); // For some reason this may return false
-  if (apds9960.enableLightSensor(false)) {
-    Serial.println(F("found"));
-      apds9960_ok = 1;
-  } else {
-    Serial.println(F("not found"));
-  }
-}
-
-void read_apds9960() {
-  if ((apds9960_ok == 1) && (millis() > (apds9960_lastRead + APDS9960_SEND_DELAY))) {
-    apds9960_lastRead = millis();
-    uint16_t r, g, b, a;
-    if (  !apds9960.readAmbientLight(a) ||
-          !apds9960.readRedLight(r) ||
-          !apds9960.readGreenLight(g) ||
-          !apds9960.readBlueLight(b) ) {
-      Serial.println("Error reading light values");
-      return;
-    }
-    if (
-        ((apds9960_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
-        (abs_diff(apds9960_lastR, r) > 1.0) ||
-        (abs_diff(apds9960_lastG, g) > 1.0) ||
-        (abs_diff(apds9960_lastB, b) > 1.0) ||
-        (abs_diff(apds9960_lastA, a) > 2.0)
-    ) {    
-      SendDataToMQTT("apds9960",
-        "r", r,
-        "g", g,
-        "b", b,
-        "a", a,
-        -1
-      );
-      apds9960_lastSend = millis();
-      apds9960_lastR = r;
-      apds9960_lastG = g;
-      apds9960_lastB = b;
-      apds9960_lastA = a;
-    }
-  }
-}
-
-void init_si7021() {
-  Serial.print(F("INIT Si7021: "));
-  si7021.begin();
-  float humidity = si7021.getRH();
-  if (humidity > 0.0 && humidity <= 150.0) {
-    // Serial.println(F("found"));
-    si7021_ok = 1;
-  } else {
-    // Serial.println(F("not found"));
-  }
-}
-
-void read_si7021() {
-  if ((si7021_ok == 1) && (millis() > (si7021_lastRead + SI7021_SEND_DELAY))) {
-    si7021_lastRead = millis();
-    float humi = si7021.getRH();
-    float temp = si7021.getTemp();
-    if (
-        ((si7021_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
-        (abs_diff(si7021_lastTemp, temp) > 0.2) ||
-        (abs_diff(si7021_lastHumi, humi) > 1.0)
-    ) {    
-      SendDataToMQTT("si7021",
-        "temp", round_float(temp, 2),
-        "humi", round_float(humi, 2),
-        "", 0,
-        "", 0,
-        -1
-      );
-      si7021_lastSend = millis();
-      si7021_lastTemp = temp;
-      si7021_lastHumi = humi;
-    }
-  }
-}
-
 void init_sds011() {
   Serial.print(F("INIT sds011: "));
   sds011.begin();
@@ -654,138 +392,6 @@ void read_sds011() {
         sds011_lastSend = millis();
         sds011_lastPM25 = pm25;
         sds011_lastPM10 = pm10;
-      }
-    }
-  }
-}
-
-#ifdef MHZ19_USE
-// MH-Z19
-static bool exchange_command(uint8_t cmd, uint8_t data[], int timeout)
-{
-    // create command buffer
-    uint8_t buf[9];
-    int len = prepare_tx(cmd, data, buf, sizeof(buf));
-
-    // send the command
-    mhz19.write(buf, len);
-
-    // wait for response
-    long start = millis();
-    while ((millis() - start) < timeout) {
-        if (mhz19.available() > 0) {
-            uint8_t b = mhz19.read();
-            if (process_rx(b, cmd, data)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-static bool read_temp_co2(int *co2, int *temp)
-{
-    uint8_t data[] = {0, 0, 0, 0, 0, 0};
-    bool result = exchange_command(0x86, data, 2000);
-    if (result) {
-        *co2 = (data[0] << 8) + data[1];
-        *temp = data[2] - 40;
-    }
-    return result;
-}
-
-
-void init_mhz19() {
-  Serial.print(F("INIT MH-Z19: "));
-  mhz19.begin(9600);  
-  delay(7000); // Wait shortly to make sure MH-Z19 is responsive
-  if (read_temp_co2(&mhz19_lastCO2, &mhz19_lastTemp)) {
-    mhz19_ok = 1;
-    Serial.println(F("found"));
-  } else {
-    Serial.println(F("not found"));
-  }
-}
-
-void read_mhz19() {
-  if ((mhz19_ok == 1) && (millis() > (mhz19_lastRead + MHZ19_SEND_DELAY))) {
-    mhz19_lastRead = millis();
-    int CO2;
-    int Temp;
-    if (read_temp_co2(&CO2, &Temp)) {
-      Serial.print("CO2: ");
-      Serial.print(CO2, DEC);
-      Serial.print(" TEMP: ");
-      Serial.println(Temp, DEC);
-      if (
-          ((mhz19_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
-          (abs_diff(mhz19_lastCO2, CO2) > 10) ||
-          (abs_diff(mhz19_lastTemp, Temp) > 1) ||
-          (mhz19_lastSend == 0)  // Send always after boot
-      ) {    
-        SendDataToMQTT("mhz19",
-          "co2", CO2,
-          "temp", Temp,
-          "", 0,
-          "", 0,
-          -1
-        );
-        mhz19_lastSend = millis();
-        mhz19_lastCO2 = CO2;
-        mhz19_lastTemp = Temp;
-      }
-    }
-  }
-}
-#endif
-
-
-void init_ds18b20() {
-  Serial.print(F("INIT DS18B20: "));
-  ds18b20.begin();
-  delay(500);//Wait for newly restarted system to stabilize
-  ds18b20_count = ds18b20.getDeviceCount();
-  if (ds18b20_count > 0) {
-    Serial.print("Found ");
-    Serial.print(ds18b20_count, DEC);
-    Serial.println(" devices.");
-    ds18b20_ok = 1;
-  } else {
-    Serial.println(F("not found"));
-  }
-}
-
-void read_ds18b20() {
-  if ((ds18b20_ok == 1) && (millis() > (ds18b20_lastRead + DS18B20_SEND_DELAY))) {
-    ds18b20_lastRead = millis();
-    ds18b20_count = ds18b20.getDeviceCount();
-    Serial.print("Requesting temperatures..."); 
-    ds18b20.requestTemperatures(); // Send the command to get temperatures
-    Serial.println("DONE");  
-    for (uint8_t i=0; i<ds18b20_count; i++) {
-      if(ds18b20.getAddress(tempDs18b20Address, i)) {
-        // set the resolution to TEMPERATURE_PRECISION bit (Each Dallas/Maxim device is capable of several different resolutions)
-        ds18b20.setResolution(tempDs18b20Address, 11);
-        float tempC = ds18b20.getTempC(tempDs18b20Address);
-        int16_t id = tempDs18b20Address[6] * 256 + tempDs18b20Address[7];
-        if (
-            ((ds18b20_lastSend[i] + SENSOR_SEND_MAX_DELAY) < millis()) ||
-            (abs_diff(ds18b20_last[i], tempC) > 0.2)
-        ) {        
-          SendDataToMQTT("ds18b20",
-            "temp", tempC,
-            "", 0,
-            "", 0,
-            "", 0,
-            id
-          );
-          ds18b20_lastSend[i] = millis();
-          ds18b20_last[i] = tempC;          
-        }
-      } else {
-        Serial.print("No device found at ");
-        Serial.print(i, DEC);
-        Serial.println("");
       }
     }
   }
@@ -842,7 +448,6 @@ void SendDataToMQTT(char const sensor[],
     Serial.println("Error: Publishing MQTT message failed.");
   }
 }
-
 
 void SendStartupToMQTT(char const key1[], char const val1[]) {
   /**
