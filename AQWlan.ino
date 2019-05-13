@@ -7,7 +7,7 @@
    MIT license
 
   NOTE
-  You must install libraries below using Arduino IDE's 
+  You must install libraries below using Arduino IDE's
   Sketch --> Include Library --> Manage Libraries... command
 
    PubSubClient (version >= 2.6.0 by Nick O'Leary)
@@ -17,7 +17,7 @@
    Adafruit BME280 Library
    Adafruit BME680 Library
    Nova Fitness Sds dust sensors library
-   
+
  **************************************************************************************/
 
 #include "settings.h"             // Remember to copy settings-example.h to settings.h and check all values!
@@ -35,9 +35,7 @@
 #include <Adafruit_BME680.h>
 #include <SdsDustSensor.h>
 
-// I2C settings
-#define SDA     D2
-#define SCL     D1
+SoftwareSerial outdoor(13, 15); // RX, TX
 
 void callback(char* topic, byte* payload, unsigned int length) {
   // handle message arrived
@@ -95,12 +93,14 @@ float sds011_lastPM10 = -1.0;
 
 float round_float(float val, int dec) {
   // Return val rounded to dec decimals
-  return (int)(val * pow(10,dec) + 0.5) / 1.0 / pow(10,dec);
+  return (int)(val * pow(10, dec) + 0.5) / 1.0 / pow(10, dec);
 }
 
 float abs_diff(float a, float b) {
   float c = a - b;
-  if (c < 0) {c = -c;}
+  if (c < 0) {
+    c = -c;
+  }
   return c;
 }
 
@@ -128,7 +128,7 @@ void MqttSetup() {
   Serial.println(clientName);
 
   if (client.connect((char*) clientName.c_str(), MQTT_USER, MQTT_PASSWORD)) {
-    
+
     Serial.println("Connected to MQTT broker");
     Serial.print("Topic is: ");
     Serial.println(MQTT_TOPIC);
@@ -148,6 +148,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println();
+  outdoor.begin(115200);
   lastMqttMsgTime = millis();
   init_sensors();
   char ap_name[30];
@@ -177,6 +178,11 @@ void loop() {
     return;
   }
   read_sensors();
+  while (outdoor.available() > 0)
+  {
+    byte incomingData = outdoor.read();
+    Serial.print(incomingData);
+  }
   mqttConnRetries = 0;
 }
 
@@ -191,26 +197,26 @@ void read_sensors() {
   // read_pushButton();
   read_status();
   read_bme280();
-  read_bme680();  
+  read_bme680();
   read_sds011();
 }
 
 void read_status() {
   if (
-      (millis() > (status_lastRead + STATUS_SEND_DELAY)) || 
-      (status_lastSend == 0) 
-     ) {
+    (millis() > (status_lastRead + STATUS_SEND_DELAY)) ||
+    (status_lastSend == 0)
+  ) {
     status_lastRead = millis();
     status_lastSend = millis();
     long rssi = WiFi.RSSI();
     long uptime = millis();
-    SendDataToMQTT("status", 
-        "rssi", rssi,
-        "uptime", uptime,
-        "", 0,
-        "", 0,
-        -1
-    );
+    SendDataToMQTT("status",
+                   "rssi", rssi,
+                   "uptime", uptime,
+                   "", 0,
+                   "", 0,
+                   -1
+                  );
   }
 }
 
@@ -228,25 +234,25 @@ void read_pushButton() {
     int buttonState1 = digitalRead(PUSHBUTTON_1);
     int buttonState2 = digitalRead(PUSHBUTTON_2);
     /*
-    Serial.print("but 1 & 2: ");
-    Serial.print(buttonState1);
-    Serial.print(" ");
-    Serial.println(buttonState2);
+      Serial.print("but 1 & 2: ");
+      Serial.print(buttonState1);
+      Serial.print(" ");
+      Serial.println(buttonState2);
     */
-    // Send data only when it has changed enough or it is time to send it anyway    
+    // Send data only when it has changed enough or it is time to send it anyway
     if (
-        (millis() > (pushButton1_lastSend + SENSOR_SEND_MAX_DELAY)) || 
-        (pushButton1_lastState != buttonState1 ||
-         pushButton2_lastState != buttonState2)
+      (millis() > (pushButton1_lastSend + SENSOR_SEND_MAX_DELAY)) ||
+      (pushButton1_lastState != buttonState1 ||
+       pushButton2_lastState != buttonState2)
     ) {
       pushButton1_lastSend = millis();
-      SendDataToMQTT("button", 
-        "b1", buttonState1,
-        "b2", buttonState2,
-        "", 0,
-        "", 0,
-        -1
-      );
+      SendDataToMQTT("button",
+                     "b1", buttonState1,
+                     "b2", buttonState2,
+                     "", 0,
+                     "", 0,
+                     -1
+                    );
       pushButton1_lastRead = millis();
     }
     pushButton1_lastState = buttonState1;
@@ -267,28 +273,28 @@ void init_bme280() {
 void read_bme280() {
   // Read BME280 if it has been initialised successfully and it is time to read it
   if (
-      (bme280_ok == 1) && (millis() > (bme280_lastRead + BME280_SEND_DELAY)) or (millis() < bme280_lastRead) ) {
+    (bme280_ok == 1) && (millis() > (bme280_lastRead + BME280_SEND_DELAY)) or (millis() < bme280_lastRead) ) {
     bme280_lastRead = millis();
     float humi = bme280.readHumidity();
     float temp = bme280.readTemperature();
     float pres = bme280.readPressure() / 100.0F;
-    // Send data only when it has changed enough or it is time to send it anyway    
+    // Send data only when it has changed enough or it is time to send it anyway
     if (
-        (millis() > (bme280_lastSend + SENSOR_SEND_MAX_DELAY)) ||
-        (abs_diff(bme280_lastTemp, temp) > 0.2) ||
-        (abs_diff(bme280_lastHumi, humi) > 1.0) ||
-        (abs_diff(bme280_lastPres, pres) > 0.2) ||
-        (millis() < bme280_lastSend) // or millis() overflow
-        
+      (millis() > (bme280_lastSend + SENSOR_SEND_MAX_DELAY)) ||
+      (abs_diff(bme280_lastTemp, temp) > 0.2) ||
+      (abs_diff(bme280_lastHumi, humi) > 1.0) ||
+      (abs_diff(bme280_lastPres, pres) > 0.2) ||
+      (millis() < bme280_lastSend) // or millis() overflow
+
     ) {
       bme280_lastSend = millis();
-      SendDataToMQTT("bme280", 
-        "temp", round_float(temp, 2),
-        "humi", round_float(humi, 1),
-        "pres", round_float(pres, 2),
-        "", 0,
-        -1
-      );
+      SendDataToMQTT("bme280",
+                     "temp", round_float(temp, 2),
+                     "humi", round_float(humi, 1),
+                     "pres", round_float(pres, 2),
+                     "", 0,
+                     -1
+                    );
       bme280_lastSend = millis();
       bme280_lastTemp = temp;
       bme280_lastHumi = humi;
@@ -326,19 +332,19 @@ void read_bme680() {
       float pres = bme680.pressure / 100.0F;
       float gas = bme680.gas_resistance / 1000.0F;
       if (
-          ((bme680_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
-          (abs_diff(bme680_lastTemp, temp) > 0.2) ||
-          (abs_diff(bme680_lastHumi, humi) > 1.0) ||
-          (abs_diff(bme680_lastPres, pres) > 0.2) ||
-          (abs_diff(bme680_lastGas, gas) > 3.0)
+        ((bme680_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
+        (abs_diff(bme680_lastTemp, temp) > 0.2) ||
+        (abs_diff(bme680_lastHumi, humi) > 1.0) ||
+        (abs_diff(bme680_lastPres, pres) > 0.2) ||
+        (abs_diff(bme680_lastGas, gas) > 3.0)
       ) {
         SendDataToMQTT("bme680",
-          "temp", round_float(temp, 2),
-          "humi", round_float(humi, 1),
-          "pres", round_float(pres, 2),
-          "gas", round_float(gas, 1),
-          -1
-        );
+                       "temp", round_float(temp, 2),
+                       "humi", round_float(humi, 1),
+                       "pres", round_float(pres, 2),
+                       "gas", round_float(gas, 1),
+                       -1
+                      );
         bme680_lastSend = millis();
         bme680_lastTemp = temp;
         bme680_lastHumi = humi;
@@ -377,18 +383,18 @@ void read_sds011() {
       Serial.print(", PM10 = ");
       Serial.println(pm10);
       if (
-          ((sds011_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
-          (abs_diff(sds011_lastPM25, pm25) > 0.3) ||
-          (abs_diff(sds011_lastPM10, pm10) > 0.3) ||
-          (sds011_lastSend == 0)
-      ) {    
+        ((sds011_lastSend + SENSOR_SEND_MAX_DELAY) < millis()) ||
+        (abs_diff(sds011_lastPM25, pm25) > 0.3) ||
+        (abs_diff(sds011_lastPM10, pm10) > 0.3) ||
+        (sds011_lastSend == 0)
+      ) {
         SendDataToMQTT("sds011",
-          "pm25", pm25,
-          "pm10", pm10,
-          "", 0,
-          "", 0,
-          -1
-        );
+                       "pm25", pm25,
+                       "pm10", pm10,
+                       "", 0,
+                       "", 0,
+                       -1
+                      );
         sds011_lastSend = millis();
         sds011_lastPM25 = pm25;
         sds011_lastPM10 = pm10;
@@ -397,23 +403,22 @@ void read_sds011() {
   }
 }
 
-
-void SendDataToMQTT(char const sensor[], 
-                    char const type1[], float val1, 
-                    char const type2[], float val2, 
-                    char const type3[], float val3, 
+void SendDataToMQTT(char const sensor[],
+                    char const type1[], float val1,
+                    char const type2[], float val2,
+                    char const type3[], float val3,
                     char const type4[], float val4,
                     int16_t sn) {
   /**
-   * Send data to the MQTT broker. Currently max 4 key/value pairs are supported. 
-   * If you set typeX argument empty (""), if will be left out from the payload.
-   */
-  /* 
-   *  NOTE!
-   *  MQTT topic + json message to be send can't exceed ~121 bytes
-   *  unless MQTT_MAX_PACKET_SIZE is set to 256
-   *  Check that message size + topic are at most 120 B.
-   */
+     Send data to the MQTT broker. Currently max 4 key/value pairs are supported.
+     If you set typeX argument empty (""), if will be left out from the payload.
+  */
+  /*
+      NOTE!
+      MQTT topic + json message to be send can't exceed ~121 bytes
+      unless MQTT_MAX_PACKET_SIZE is set to 256
+      Check that message size + topic are at most 120 B.
+  */
   // Serial.println("SendDataToMQTT start");
   // StaticJsonBuffer<512> jsonBuffer;
   uint16_t msg_len = 0;
@@ -426,10 +431,18 @@ void SendDataToMQTT(char const sensor[],
     root["sn"] = sn;
   }
   JsonObject& data = root.createNestedObject("data");
-  if (type1[0] != 0) { data[type1] = val1; }
-  if (type2[0] != 0) { data[type2] = val2; }
-  if (type3[0] != 0) { data[type3] = val3; }
-  if (type4[0] != 0) { data[type4] = val4; }
+  if (type1[0] != 0) {
+    data[type1] = val1;
+  }
+  if (type2[0] != 0) {
+    data[type2] = val2;
+  }
+  if (type3[0] != 0) {
+    data[type3] = val3;
+  }
+  if (type4[0] != 0) {
+    data[type4] = val4;
+  }
   root.printTo(jsonChar);
   msg_len = strlen(MQTT_TOPIC) + strlen(jsonChar);
   Serial.print(round_float((millis() / 1000.0), 2));
@@ -451,14 +464,14 @@ void SendDataToMQTT(char const sensor[],
 
 void SendStartupToMQTT(char const key1[], char const val1[]) {
   /**
-   * Send startup message to the MQTT broker.
-   */
+     Send startup message to the MQTT broker.
+  */
   uint16_t msg_len = 0;
   DynamicJsonBuffer jsonBuffer(512);
   char jsonChar[256];
   JsonObject& root = jsonBuffer.createObject();
   root[key1] = val1;
-  root["mac"] = mac_str; 
+  root["mac"] = mac_str;
   root["rssi"] = WiFi.RSSI();
   root.printTo(jsonChar);
   msg_len = strlen(MQTT_TOPIC) + strlen(jsonChar);
