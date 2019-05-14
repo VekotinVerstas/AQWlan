@@ -35,7 +35,9 @@
 #include <Adafruit_BME680.h>
 #include <SdsDustSensor.h>
 
-SoftwareSerial outdoor(13, 15); // RX, TX
+void SendStartupToMQTT(char const key1[], char const val1[]);
+void init_sensors();
+void read_sensors();
 
 void callback(char* topic, byte* payload, unsigned int length) {
   // handle message arrived
@@ -148,7 +150,6 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println();
-  outdoor.begin(115200);
   lastMqttMsgTime = millis();
   init_sensors();
   char ap_name[30];
@@ -178,11 +179,6 @@ void loop() {
     return;
   }
   read_sensors();
-  while (outdoor.available() > 0)
-  {
-    byte incomingData = outdoor.read();
-    Serial.print(incomingData);
-  }
   mqttConnRetries = 0;
 }
 
@@ -195,7 +191,7 @@ void init_sensors() {
 
 void read_sensors() {
   // read_pushButton();
-  read_status();
+  //read_status();
   read_bme280();
   read_bme680();
   read_sds011();
@@ -490,4 +486,5 @@ void SendStartupToMQTT(char const key1[], char const val1[]) {
   } else {
     Serial.println("Error: Publishing MQTT message failed.");
   }
+
 }
