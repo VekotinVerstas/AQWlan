@@ -191,7 +191,7 @@ void init_sensors() {
 
 void read_sensors() {
   // read_pushButton();
-  //read_status();
+  read_status();
   read_bme280();
   read_bme680();
   read_sds011();

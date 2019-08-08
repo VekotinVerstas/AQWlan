@@ -17,10 +17,14 @@
 #define PUSHBUTTON_SEND_DELAY 100
 
 #define BME680_HEATING_TIME 150 // milliseconds
-#define BME680_SEND_DELAY 10000 // milliseconds
+#define BME680_SEND_DELAY 30000 // milliseconds
 
-#define BME280_SEND_DELAY 1000 // milliseconds
+#define BME280_SEND_DELAY 30000 // milliseconds
 
-#define SDS011_SEND_DELAY 500 // milliseconds
-#define SDS011_RXPIN D3
-#define SDS011_TXPIN D4
+#define SDS011_SEND_DELAY 1000 // milliseconds
+#define SDS011_RXPIN 14
+#define SDS011_TXPIN 12
+
+// I2C settings
+#define SDA     4
+#define SCL     5
